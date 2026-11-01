@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<codex-account-config>
+  <accounts-dir>~/.local/share/codex-accounts</accounts-dir>
+  <shared-home>~/.codex</shared-home>
+</codex-account-config>

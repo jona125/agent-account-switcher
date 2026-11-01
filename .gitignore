@@ -1,0 +1,5 @@
+# Machine-specific paths and local overrides
+config.local.xml
+# Credentials, runtime state, and generated Python files
+__pycache__/
+*.pyc
