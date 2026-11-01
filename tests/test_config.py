@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 PROJECT = Path(__file__).resolve().parents[1]
-SCRIPT = PROJECT / 'codex-account'
+SCRIPT = PROJECT / 'lib' / 'codex-backend'
 PARSER = PROJECT / 'lib' / 'read_config.py'
 
 class ConfigurationTests(unittest.TestCase):
@@ -30,17 +30,17 @@ class ConfigurationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             project = Path(temp) / 'project'
             project.mkdir()
-            shutil.copy2(SCRIPT, project / 'codex-account')
+            shutil.copy2(PROJECT / 'agent-account', project / 'agent-account')
             shutil.copy2(PROJECT / 'config.xml', project / 'config.xml')
             shutil.copytree(PROJECT / 'lib', project / 'lib')
             env = dict(os.environ, CODEX_ACCOUNTS_DIR=str(Path(temp) / 'accounts'),
                        CODEX_SHARED_HOME=str(Path(temp) / 'shared'))
             env.pop('CODEX_ACCOUNT_CONFIG', None)
-            subprocess.run([str(project / 'codex-account'), 'help'], env=env, check=True, capture_output=True)
+            subprocess.run([str(project / 'agent-account'), 'help'], env=env, check=True, capture_output=True)
             local = project / 'config.local.xml'
             self.assertEqual(local.read_bytes(), (project / 'config.xml').read_bytes())
             local.write_text('custom local content')
-            subprocess.run([str(project / 'codex-account'), 'help'], env=env, check=True, capture_output=True)
+            subprocess.run([str(project / 'agent-account'), 'help'], env=env, check=True, capture_output=True)
             self.assertEqual(local.read_text(), 'custom local content')
 
     def test_other_agents_dispatch_without_exposing_credentials(self):

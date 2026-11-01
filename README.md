@@ -22,7 +22,7 @@ agent-account run work -- --resume
 agent-account run personal -- resume --all
 ```
 
-`use` changes the default for future launches; running sessions are unaffected. `run NAME` starts a named profile without changing the default. Put CLI arguments after `--`. Existing Codex profiles created by the older `codex-account` command are discovered automatically. Profile names must be unique across all agents. The older `codex-account` interface remains available for compatibility.
+`use` changes the default for future launches; running sessions are unaffected. `run NAME` starts a named profile without changing the default. Put CLI arguments after `--`. Existing Codex profiles created by the older `codex-account` command are discovered automatically. Profile names must be unique across all agents.
 
 Codex and Claude profiles use their CLIs' own interactive login flows. For Copilot, first authenticate the desired GitHub username with `gh auth login`; the profile stores only that username. At launch, the wrapper obtains that user's GitHub CLI token and passes it to Copilot in `COPILOT_GITHUB_TOKEN`. The token is not saved in the profile, but is present in Copilot's process environment. Copilot access depends on the account and token permissions. GitHub CLI and Copilot must be installed; GitHub Enterprise hosts are not currently supported. Copilot provider environment variables can override GitHub authentication for model requests.
 

@@ -99,7 +99,7 @@ case "$command_name" in
       printf '%s\n' "$name" > "$root/selected"
       echo "Selected '$name'."
     else
-      echo "Login failed; account directory retained. Retry with: codex-account login $name" >&2
+      echo "Login failed; account directory retained. Retry with: agent-account login $name" >&2
       exit 1
     fi ;;
   login)
@@ -108,7 +108,7 @@ case "$command_name" in
   use)
     [[ $# == 1 ]] || { usage >&2; exit 2; }; name="$1"; require_account "$name"; prepare
     tmp="$(mktemp "$root/.selected.XXXXXX")"; printf '%s\n' "$name" > "$tmp"; mv -f "$tmp" "$root/selected"
-    echo "Selected '$name' for future codex-account runs." ;;
+    echo "Selected '$name' for future launches." ;;
   list)
     [[ $# == 0 ]] || { usage >&2; exit 2; }; prepare
     active=''; [[ ! -f "$root/selected" ]] || IFS= read -r active < "$root/selected" || true
