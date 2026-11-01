@@ -9,8 +9,16 @@ while [[ -L "$script_path" ]]; do
 done
 script_dir="$(cd -P "$(dirname "$script_path")" && pwd)"
 config="$script_dir/config.xml"
-[[ ! -f "$script_dir/config.local.xml" ]] || config="$script_dir/config.local.xml"
-config="${CODEX_ACCOUNT_CONFIG:-$config}"
+if [[ -n "${CODEX_ACCOUNT_CONFIG:-}" ]]; then
+  config="$CODEX_ACCOUNT_CONFIG"
+else
+  local_config="$script_dir/config.local.xml"
+  if [[ ! -e "$local_config" && ! -L "$local_config" ]]; then
+    python3 "$script_dir/lib/init_config.py" "$config" "$local_config" || \
+      echo "Could not create $local_config; using default configuration." >&2
+  fi
+  [[ ! -e "$local_config" && ! -L "$local_config" ]] || config="$local_config"
+fi
 root="${CODEX_ACCOUNTS_DIR:-$(python3 "$script_dir/lib/read_config.py" "$config" accounts-dir)}"
 shared="${CODEX_SHARED_HOME:-$(python3 "$script_dir/lib/read_config.py" "$config" shared-home)}"
 python3 - "$script_dir" "$root" "$shared" <<'PY'

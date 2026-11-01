@@ -22,7 +22,7 @@ To continue a conversation with a different account, exit the original CLI sessi
 
 ## Local configuration
 
-The tracked `config.xml` contains portable defaults. To customize paths for this Mac, copy it to `config.local.xml` in the project directory and edit the two directory values. This file is ignored by Git. Both settings must be absolute paths or begin with `~/`:
+The tracked `config.xml` contains portable defaults. On first use, the launcher creates `config.local.xml` in the project directory from those defaults. Edit that ignored file to customize paths for this Mac; existing local files are never overwritten. If it cannot be created, the launcher uses the defaults. Both settings must be absolute paths or begin with `~/`:
 
 ```xml
 <codex-account-config>

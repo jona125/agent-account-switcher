@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
 
@@ -24,6 +25,23 @@ class ConfigurationTests(unittest.TestCase):
             result = subprocess.run([str(SCRIPT), 'list'], env=env, capture_output=True, text=True, check=True)
             self.assertIn('No accounts yet', result.stdout)
             self.assertTrue((path / 'accounts' / 'accounts').is_dir())
+
+    def test_first_run_creates_and_preserves_local_config(self):
+        with tempfile.TemporaryDirectory() as temp:
+            project = Path(temp) / 'project'
+            project.mkdir()
+            shutil.copy2(SCRIPT, project / 'codex-account')
+            shutil.copy2(PROJECT / 'config.xml', project / 'config.xml')
+            shutil.copytree(PROJECT / 'lib', project / 'lib')
+            env = dict(os.environ, CODEX_ACCOUNTS_DIR=str(Path(temp) / 'accounts'),
+                       CODEX_SHARED_HOME=str(Path(temp) / 'shared'))
+            env.pop('CODEX_ACCOUNT_CONFIG', None)
+            subprocess.run([str(project / 'codex-account'), 'help'], env=env, check=True, capture_output=True)
+            local = project / 'config.local.xml'
+            self.assertEqual(local.read_bytes(), (project / 'config.xml').read_bytes())
+            local.write_text('custom local content')
+            subprocess.run([str(project / 'codex-account'), 'help'], env=env, check=True, capture_output=True)
+            self.assertEqual(local.read_text(), 'custom local content')
 
     def test_bad_config_and_repository_storage_rejected(self):
         with tempfile.TemporaryDirectory() as temp:
