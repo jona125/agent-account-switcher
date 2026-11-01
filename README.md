@@ -1,34 +1,49 @@
-# Codex account switcher for macOS
+# Agent account switcher for macOS
 
-A terminal wrapper for using multiple Codex CLI logins. It does not change your existing `~/.codex` or your ordinary `codex` command. Codex must already be installed and available on PATH.
+Launch Codex, Claude Code, or GitHub Copilot CLI using a named account profile. Each CLI must already be installed. Bash and Python 3 are required.
+
+Install the launcher by linking it to a directory on your PATH:
 
 ```sh
-~/.local/bin/codex-account add personal
-~/.local/bin/codex-account add work
-~/.local/bin/codex-account list
-~/.local/bin/codex-account use work
-~/.local/bin/codex-account run
-~/.local/bin/codex-account run --account personal -- exec 'Explain this project'
-~/.local/bin/codex-account status
+mkdir -p ~/.local/bin
+ln -s "$(pwd)/agent-account" ~/.local/bin/agent-account
 ```
 
-If `~/.local/bin` is on your PATH, use `codex-account` directly. Each `add` opens the standard Codex login flow; choose the intended ChatGPT account in the browser. If the browser automatically signs into the wrong account, use a browser profile or private window with the desired account. To refresh a login, run `codex-account login NAME`.
+Run the commands from this repository directory or add `~/.local/bin` to your PATH. Choose the CLI when adding a profile; after that the profile name identifies it:
 
-Each account has a separate Codex home under `~/.local/share/codex-accounts/accounts/NAME`, with separate file-based credentials and settings. Credentials are sensitive; keep the directory private and do not sync or commit it. The wrapper links session files to your existing `~/.codex` home and configures the shared SQLite state there, so both accounts can find the same sessions. Existing settings, skills, plugins, and MCP connections are not automatically copied. `CODEX_ACCOUNTS_DIR` overrides account storage; `CODEX_SHARED_HOME` overrides the shared home. If an account already has its own session files, the wrapper stops rather than overwrite them; those files are not automatically merged.
-
-The wrapper passes all CLI arguments to Codex, including `exec`, `resume`, and other subcommands. Selection applies to future wrapper launches. It does not change a running process or automatically switch the desktop app, IDE extensions, remote daemons, or plain `codex` commands. Environment-provided credentials or an independently configured remote server may override local credentials; check `status` and your environment when applicable. Run `codex-account help` for options.
-
-To continue a conversation with a different account, exit the original CLI session, then run `codex-account run --account work -- resume --all` and select it. Switch back in the same way. Avoid having two processes actively edit the same conversation at once. The wrapper disables the shared daemon for its launches to keep account credentials scoped to the selected process. This arrangement was tested by resuming an isolated copy of an old session from two homes; live authenticated turns across accounts have not yet been tested.
-
-## Local configuration
-
-The tracked `config.xml` contains portable defaults. On first use, the launcher creates `config.local.xml` in the project directory from those defaults. Edit that ignored file to customize paths for this Mac; existing local files are never overwritten. If it cannot be created, the launcher uses the defaults. Both settings must be absolute paths or begin with `~/`:
-
-```xml
-<codex-account-config>
-  <accounts-dir>~/.local/share/codex-accounts</accounts-dir>
-  <shared-home>~/.codex</shared-home>
-</codex-account-config>
+```sh
+agent-account add personal codex
+agent-account add work claude
+agent-account add github-work copilot GITHUB_USERNAME
+agent-account list
+agent-account use personal
+agent-account run
+agent-account run work -- --resume
+agent-account run personal -- resume --all
 ```
 
-`accounts-dir` stores login credentials and must remain private; `shared-home` points to the Codex home containing the shared session history. Do not place either directory inside the Git repository. The optional `CODEX_ACCOUNT_CONFIG` environment variable selects another XML file. `CODEX_ACCOUNTS_DIR` and `CODEX_SHARED_HOME` take precedence over the corresponding XML values. The parser uses Python 3's standard library; no additional packages are required. Never put credentials in the XML file.
+`use` changes the default for future launches; running sessions are unaffected. `run NAME` starts a named profile without changing the default. Put CLI arguments after `--`. Existing Codex profiles created by the older `codex-account` command are discovered automatically. Profile names must be unique across all agents. The older `codex-account` interface remains available for compatibility.
+
+Codex and Claude profiles use their CLIs' own interactive login flows. For Copilot, first authenticate the desired GitHub username with `gh auth login`; the profile stores only that username. At launch, the wrapper obtains that user's GitHub CLI token and passes it to Copilot in `COPILOT_GITHUB_TOKEN`. The token is not saved in the profile, but is present in Copilot's process environment. Copilot access depends on the account and token permissions. GitHub CLI and Copilot must be installed; GitHub Enterprise hosts are not currently supported. Copilot provider environment variables can override GitHub authentication for model requests.
+
+## Sessions
+
+Each CLI has its own conversation format; sessions cannot be resumed across different CLIs. Codex profiles share the existing `~/.codex` session files and SQLite state, while keeping credentials separate. Exit a session before resuming it with another profile. Codex shared-history resumption was tested with an isolated old session; simultaneous authenticated turns across accounts have not been verified.
+
+Claude profiles use separate `CLAUDE_CONFIG_DIR` directories and link their `projects` directory to `~/.claude/projects`, or to the `projects` directory under `CLAUDE_SHARED_HOME` if set to an absolute path. Start Claude normally first to create the directory. This sharing arrangement is experimental and has not been verified with authenticated Claude sessions or all versions. If a profile already has separate project history, the launcher stops rather than overwrite it. API key or provider environment variables can override the profile login.
+
+Copilot retains its normal configuration and session storage. Copilot's built-in `/user list` and `/user switch` are also available. Avoid running two processes against the same conversation simultaneously, and take care when separate sessions edit the same files.
+
+## Configuration and security
+
+The tracked `config.xml` has portable defaults. On first use, the launcher creates the Git-ignored `config.local.xml` from those defaults. Edit it to customize directories. Existing local files are never overwritten; if creation fails, defaults are used. Paths must be absolute or start with `~/`.
+
+`accounts-dir` stores profile data and credentials; `shared-home` points to the shared Codex home. Keep both outside this repository and never put credentials into XML. `CODEX_ACCOUNT_CONFIG` selects an alternative XML file; `CODEX_ACCOUNTS_DIR` and `CODEX_SHARED_HOME` override the corresponding values. `CLAUDE_SHARED_HOME` separately overrides Claude's shared home. Credentials, histories, account configurations, and local overrides must not be committed or synced to Git.
+
+See [Claude Code environment variables](https://code.claude.com/docs/en/env-vars) and [Copilot authentication](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli).
+
+## Login status and reauthentication
+
+`agent-account list` shows each profile's agent and a basic login check. `credential available` means the underlying CLI reported a saved login, or `gh` returned a token for a Copilot profile. It does not confirm that a live request will succeed or that an account has an active subscription. `check login` means the check could not establish that credentials are available; the CLI or keychain could also be unavailable. Environment credentials can affect the underlying CLI's status.
+
+For more detail, run `agent-account status NAME`. If a Codex or Claude profile needs a new login, run `agent-account login NAME` and complete its normal login flow. For Copilot, run `gh auth login`, authenticate the GitHub username associated with the profile, then run `agent-account status NAME`. These steps retain the profile name and session history. The tool does not yet provide commands to rename, edit, or remove profiles.

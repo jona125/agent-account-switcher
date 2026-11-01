@@ -1,10 +1,9 @@
 # Agent instructions
 
-This macOS tool wraps the installed Codex CLI so separate accounts can use shared local session history. It requires Bash, Python 3, and `codex` on PATH.
+This macOS project wraps Codex, Claude Code, and GitHub Copilot CLI using named account profiles. Bash, Python 3, and the selected CLI must be installed.
 
-- Run `./codex-account list` to list accounts and `./codex-account status NAME` to check login status.
-- Run `./codex-account run --account NAME -- resume --all` to select an existing session, or omit `resume --all` to start a new one. `use NAME` sets the default for future wrapper launches; it does not change a running session.
-- To continue a conversation under another account, exit the existing session first, then resume it with the other account. Do not run two processes against the same session simultaneously. Shared-history resumption has been tested in isolation; concurrent authenticated use has not been verified.
-- `config.xml` contains portable defaults. Put machine-specific paths in the ignored `config.local.xml`; see the README for overrides. Keep credentials and session storage outside this repository. Never print, copy, or commit credentials or local configuration.
-- Do not log out, switch the default account, change account configuration, or alter shared history unless requested. Preserve existing history and credentials.
-- Verify changes with `python3 -m unittest discover -s tests -v` and `bash -n codex-account`. Use temporary directories and mock credentials for tests.
+- Use `./agent-account list` to see profile names and agent types. `use NAME` selects a profile for future launches; `run NAME -- ARGS` launches one without changing that selection. Add profiles with `add NAME codex`, `add NAME claude`, or `add NAME copilot GITHUB_USERNAME`.
+- The old `codex-account` command remains compatible. Do not change account selection, log out, or alter credentials or history unless requested.
+- CLI session histories are separate. Codex shares local history across its profiles; Claude history sharing is experimental and unverified with authenticated sessions. Do not open the same session in two processes at once.
+- `config.xml` contains defaults; ignored `config.local.xml` holds local overrides. Keep credentials, session data, and local configuration out of Git. Never print or copy credentials. Copilot obtains a `gh` token at launch; do not log it.
+- Verify changes with `python3 -m unittest discover -s tests -v` and `for f in agent-account codex-account lib/codex-backend lib/claude-account; do bash -n "$f"; done`. Use temporary directories and mock credentials for tests.

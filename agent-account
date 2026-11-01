@@ -1,0 +1,105 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+path="${BASH_SOURCE[0]}"
+while [[ -L "$path" ]]; do dir="$(cd -P "$(dirname "$path")" && pwd)"; path="$(readlink "$path")"; [[ "$path" == /* ]] || path="$dir/$path"; done
+dir="$(cd -P "$(dirname "$path")" && pwd)"
+config="${CODEX_ACCOUNT_CONFIG:-$dir/config.local.xml}"
+if [[ ! -e "$config" && ! -L "$config" && -z "${CODEX_ACCOUNT_CONFIG:-}" ]]; then
+  python3 "$dir/lib/init_config.py" "$dir/config.xml" "$config" || echo 'Using default configuration.' >&2
+  [[ -e "$config" || -L "$config" ]] || config="$dir/config.xml"
+fi
+root="${CODEX_ACCOUNTS_DIR:-$(python3 "$dir/lib/read_config.py" "$config" accounts-dir)}"
+python3 - "$dir" "$root" <<'PY'
+import os, sys
+if os.path.commonpath(tuple(map(os.path.realpath, sys.argv[1:]))) == os.path.realpath(sys.argv[1]):
+    sys.exit('Account storage must be outside the project directory.')
+PY
+valid() { [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; }
+check() { valid "$1" || { echo 'Invalid profile name.' >&2; exit 2; }; }
+resolve() {
+  check "$1"; name="$1"; agent=''; count=0
+  for kind in codex claude copilot; do
+    case "$kind" in codex) candidate="$root/accounts/$name";; claude) candidate="$root/claude/accounts/$name";; copilot) candidate="$root/copilot/accounts/$name";; esac
+    if [[ -d "$candidate" && ! -L "$candidate" ]]; then agent="$kind"; count=$((count+1)); fi
+  done
+  [[ $count -eq 1 ]] || { echo "Profile '$name' is unknown or ambiguous; profile names must be unique." >&2; exit 1; }
+}
+choose() {
+  local f="$root/agent-selected"; [[ -f "$f" ]] || f="$root/selected"
+  [[ -f "$f" ]] || { echo 'No profile selected; run agent-account use NAME.' >&2; exit 1; }
+  IFS= read -r chosen < "$f" || true; resolve "$chosen"
+}
+set_selected() { mkdir -p "$root"; local temp; temp="$(mktemp "$root/.agent-selected.XXXXXX")"; printf '%s\n' "$1" > "$temp"; mv -f "$temp" "$root/agent-selected"; }
+cmd="${1:-help}"; [[ $# == 0 ]] || shift
+case "$cmd" in
+ help|-h|--help) cat <<'HELP'
+Usage: agent-account COMMAND
+  add NAME codex|claude              Add a profile and sign in
+  add NAME copilot GITHUB_USERNAME   Add a profile using a gh login
+  list                               List profiles and check stored logins
+  use NAME                           Select a profile for future runs
+  run [NAME] [--] [AGENT ARGS...]   Launch the selected or named profile
+  status [NAME]                      Check the profile login
+  login NAME                         Reauthenticate a Codex or Claude profile
+HELP
+ ;;
+ add)
+   [[ $# -ge 2 ]] || { echo 'Usage: agent-account add NAME codex|claude|copilot [GITHUB_USERNAME]' >&2; exit 2; }
+   name="$1"; agent="$2"; check "$name"
+   for existing in "$root/accounts/$name" "$root/claude/accounts/$name" "$root/copilot/accounts/$name"; do [[ ! -e "$existing" && ! -L "$existing" ]] || { echo "Profile '$name' already exists." >&2; exit 1; }; done
+   case "$agent" in
+     codex|claude) [[ $# == 2 ]] || exit 2; "$dir/lib/codex-backend" --agent "$agent" add "$name" ;;
+     copilot)
+       [[ $# == 3 && "$3" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || { echo 'Provide a GitHub username for Copilot.' >&2; exit 2; }
+       gh auth token --hostname github.com --user "$3" >/dev/null || { echo 'Authenticate this GitHub user with gh auth login first.' >&2; exit 1; }
+       mkdir -p "$root/copilot/accounts/$name"; printf '%s\n' "$3" > "$root/copilot/accounts/$name/github-user" ;;
+     *) echo 'Agent must be codex, claude, or copilot.' >&2; exit 2 ;;
+   esac
+   set_selected "$name"; echo "Selected $name ($agent)." ;;
+ list)
+   [[ $# == 0 ]] || exit 2; active=''; [[ ! -f "$root/agent-selected" ]] || IFS= read -r active < "$root/agent-selected" || true
+   [[ -n "$active" || ! -f "$root/selected" ]] || IFS= read -r active < "$root/selected" || true
+   found=0
+   for kind in codex claude copilot; do
+     case "$kind" in codex) base="$root/accounts";; claude) base="$root/claude/accounts";; copilot) base="$root/copilot/accounts";; esac
+     for entry in "$base"/*; do
+       [[ -d "$entry" && ! -L "$entry" ]] || continue
+       found=1; name="${entry##*/}"; marker=' '; [[ "$name" != "$active" ]] || marker='*'
+       login_state='check login'
+       case "$kind" in
+         codex) if CODEX_HOME="$entry" codex -c 'cli_auth_credentials_store="file"' login status >/dev/null 2>&1; then login_state='credential available'; fi ;;
+         claude) if CLAUDE_CONFIG_DIR="$entry" claude auth status >/dev/null 2>&1; then login_state='credential available'; fi ;;
+         copilot)
+           if [[ -f "$entry/github-user" ]]; then
+             user=''; IFS= read -r user < "$entry/github-user" || true
+             if [[ -n "$user" ]] && gh auth token --hostname github.com --user "$user" >/dev/null 2>&1; then login_state='credential available'; fi
+           fi ;;
+       esac
+       printf '%s %-20s %-8s %s\n' "$marker" "$name" "$kind" "$login_state"
+     done
+   done
+   [[ $found == 1 ]] || echo 'No profiles yet.' ;;
+ use) [[ $# == 1 ]] || exit 2; resolve "$1"; set_selected "$name"; echo "Selected $name ($agent) for future launches." ;;
+ login|status)
+   if [[ $# == 1 ]]; then resolve "$1"; elif [[ $# == 0 && "$cmd" == status ]]; then choose; else exit 2; fi
+   if [[ "$agent" == copilot ]]; then
+     [[ -f "$root/copilot/accounts/$name/github-user" ]] || { echo 'Copilot profile is incomplete.' >&2; exit 1; }
+     IFS= read -r user < "$root/copilot/accounts/$name/github-user" || true
+     if [[ "$cmd" == login ]]; then echo "Run gh auth login and authenticate as $user, then retry."; else gh auth token --hostname github.com --user "$user" >/dev/null && echo "GitHub credentials available for $user."; fi
+   else exec "$dir/lib/codex-backend" --agent "$agent" "$cmd" "$name"; fi ;;
+ run)
+   if [[ $# -gt 0 && "$1" != -- && "$1" != -* ]]; then resolve "$1"; shift
+   elif [[ "${1:-}" == --account ]]; then [[ $# -ge 2 ]] || exit 2; resolve "$2"; shift 2
+   else choose; fi
+   [[ "${1:-}" != -- ]] || shift
+   if [[ "$agent" == copilot ]]; then
+     IFS= read -r user < "$root/copilot/accounts/$name/github-user" || true
+     token="$(gh auth token --hostname github.com --user "$user")" || { echo 'GitHub authentication failed.' >&2; exit 1; }
+     [[ -n "$token" ]] || { echo 'GitHub returned an empty token.' >&2; exit 1; }
+     export COPILOT_GITHUB_TOKEN="$token"; unset token
+     exec copilot "$@"
+   fi
+   exec "$dir/lib/codex-backend" --agent "$agent" run --account "$name" -- "$@" ;;
+ *) echo "Unknown command: $cmd" >&2; exit 2 ;;
+esac

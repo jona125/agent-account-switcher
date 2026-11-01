@@ -1,0 +1,35 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+root="$1/claude"; shift
+shared="${CLAUDE_SHARED_HOME:-$HOME/.claude}"
+valid() { [[ "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; }
+require_account() { valid "$1" && [[ -d "$root/accounts/$1" && ! -L "$root/accounts/$1" ]] || { echo "Invalid or unknown Claude account: $1" >&2; exit 1; }; }
+selected() { [[ -f "$root/selected" ]] || { echo 'No Claude account selected. Run: codex-account --agent claude add NAME' >&2; exit 1; }; IFS= read -r name < "$root/selected" || true; require_account "$name"; }
+command="${1:-help}"; [[ $# == 0 ]] || shift
+case "$command" in
+  help|-h|--help) echo 'Claude: add NAME | login NAME | use NAME | list | status [NAME] | run [--account NAME] [--] [CLAUDE ARGS...]' ;;
+  add)
+    [[ $# == 1 ]] && valid "$1" || { echo 'Provide an account name containing letters, digits, underscores or hyphens.' >&2; exit 2; }
+    name="$1"; mkdir -p "$root/accounts"; [[ ! -e "$root/accounts/$name" && ! -L "$root/accounts/$name" ]] || { echo 'Account already exists.' >&2; exit 1; }
+    mkdir "$root/accounts/$name"
+    if CLAUDE_CONFIG_DIR="$root/accounts/$name" claude auth login; then printf '%s\n' "$name" > "$root/selected"; else echo "Login failed; retry with login $name." >&2; exit 1; fi ;;
+  login) [[ $# == 1 ]] || exit 2; name="$1"; require_account "$name"; exec env CLAUDE_CONFIG_DIR="$root/accounts/$name" claude auth login ;;
+  use) [[ $# == 1 ]] || exit 2; name="$1"; require_account "$name"; temp="$(mktemp "$root/.selected.XXXXXX")"; printf '%s\n' "$name" > "$temp"; mv -f "$temp" "$root/selected"; echo "Selected Claude account '$name' for future launches." ;;
+  list)
+    [[ $# == 0 ]] || exit 2; active=''; [[ ! -f "$root/selected" ]] || IFS= read -r active < "$root/selected" || true
+    found=0; for dir in "$root"/accounts/*; do [[ -d "$dir" && ! -L "$dir" ]] || continue; name="${dir##*/}"; found=1; if [[ "$name" == "$active" ]]; then printf '* %s\n' "$name"; else printf '  %s\n' "$name"; fi; done
+    [[ $found == 1 ]] || echo 'No Claude accounts yet.' ;;
+  status) [[ $# -le 1 ]] || exit 2; if [[ $# == 1 ]]; then name="$1"; require_account "$name"; else selected; fi; exec env CLAUDE_CONFIG_DIR="$root/accounts/$name" claude auth status ;;
+  run)
+    if [[ "${1:-}" == --account ]]; then [[ $# -ge 2 ]] || exit 2; name="$2"; require_account "$name"; shift 2; else selected; fi
+    [[ "${1:-}" != -- ]] || shift
+    [[ "$shared" == /* ]] || { echo 'CLAUDE_SHARED_HOME must be an absolute path.' >&2; exit 1; }
+    [[ -d "$shared/projects" ]] || { echo "Claude shared projects directory missing: $shared/projects. Start Claude normally first or set CLAUDE_SHARED_HOME." >&2; exit 1; }
+    link="$root/accounts/$name/projects"; target="$shared/projects"
+    if [[ -L "$link" ]]; then [[ "$(readlink "$link")" == "$target" ]] || { echo 'Existing projects link points elsewhere; preserving it.' >&2; exit 1; }
+    elif [[ -e "$link" ]]; then echo 'Account has separate project history; preserving it. Move it aside before proceeding.' >&2; exit 1
+    else ln -s "$target" "$link"; fi
+    exec env CLAUDE_CONFIG_DIR="$root/accounts/$name" claude "$@" ;;
+  *) echo "Unknown Claude command: $command" >&2; exit 2 ;;
+esac
