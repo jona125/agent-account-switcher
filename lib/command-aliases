@@ -1,0 +1,9 @@
+# Wrapper aliases. These are recognized only as the first argument.
+# Format: short option, command, description (tab-separated).
+-a	add	Add a profile
+-l	list	List profiles and login status
+-u	use	Select a profile
+-r	run	Launch a profile
+-s	status	Check a profile login
+-i	login	Reauthenticate a profile
+-h	help	Show help

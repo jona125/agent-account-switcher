@@ -32,6 +32,12 @@ choose() {
 }
 set_selected() { mkdir -p "$root"; local temp; temp="$(mktemp "$root/.agent-selected.XXXXXX")"; printf '%s\n' "$1" > "$temp"; mv -f "$temp" "$root/agent-selected"; }
 cmd="${1:-help}"; [[ $# == 0 ]] || shift
+# Interpret aliases only in the wrapper command position; agent arguments are
+# passed through unchanged, including flags with the same short names.
+while IFS=$'\t' read -r short long description; do
+  [[ -n "$short" && "$short" != \#* ]] || continue
+  if [[ "$cmd" == "$short" ]]; then cmd="$long"; break; fi
+done < "$dir/lib/command-aliases"
 case "$cmd" in
  help|-h|--help) cat <<'HELP'
 Usage: agent-account COMMAND
@@ -42,7 +48,13 @@ Usage: agent-account COMMAND
   run [NAME] [--] [AGENT ARGS...]   Launch the selected or named profile
   status [NAME]                      Check the profile login
   login NAME                         Reauthenticate a Codex or Claude profile
+
+Short options (use in place of COMMAND):
 HELP
+   while IFS=$'\t' read -r short long description; do
+     [[ -n "$short" && "$short" != \#* ]] || continue
+     printf '  %-4s %-8s %s\n' "$short" "$long" "$description"
+   done < "$dir/lib/command-aliases"
  ;;
  add)
    [[ $# -ge 2 ]] || { echo 'Usage: agent-account add NAME codex|claude|copilot [GITHUB_USERNAME]' >&2; exit 2; }

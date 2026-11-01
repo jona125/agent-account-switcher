@@ -47,3 +47,15 @@ See [Claude Code environment variables](https://code.claude.com/docs/en/env-vars
 `agent-account list` shows each profile's agent and a basic login check. `credential available` means the underlying CLI reported a saved login, or `gh` returned a token for a Copilot profile. It does not confirm that a live request will succeed or that an account has an active subscription. `check login` means the check could not establish that credentials are available; the CLI or keychain could also be unavailable. Environment credentials can affect the underlying CLI's status.
 
 For more detail, run `agent-account status NAME`. If a Codex or Claude profile needs a new login, run `agent-account login NAME` and complete its normal login flow. For Copilot, run `gh auth login`, authenticate the GitHub username associated with the profile, then run `agent-account status NAME`. These steps retain the profile name and session history. The tool does not yet provide commands to rename, edit, or remove profiles.
+
+## Short command flags
+
+Each wrapper command has a one-letter alias shown by `agent-account -h`: `-a` add, `-l` list, `-u` use, `-r` run, `-s` status, and `-i` login. For example:
+
+```sh
+agent-account -l
+agent-account -u personal
+agent-account -r personal -- resume --all
+```
+
+These aliases apply only to the wrapper's first argument. Flags after `run` or `-r` belong to the selected agent and are passed through as provided; use `--` before agent arguments to avoid ambiguity. The mappings live in `lib/command-aliases`.
